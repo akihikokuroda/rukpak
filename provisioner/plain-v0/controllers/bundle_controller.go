@@ -396,7 +396,6 @@ func (r *BundleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *BundleReconciler) getBundleContentsFromGithub(ctx context.Context, repo string) (fs.FS, error) {
         client, err := github.New("https://api.github.com")
         if err != nil {
-//              log.Error(err)
                 return nil, err
         }
 
@@ -405,7 +404,6 @@ func (r *BundleReconciler) getBundleContentsFromGithub(ctx context.Context, repo
 
         contentInfo, _, err := client.Contents.List(ctx, repo, "manifests", "main", scm.ListOptions{})
         if err != nil {
-//              log.Error(err)
                 return nil, err
         }
 
@@ -416,12 +414,9 @@ func (r *BundleReconciler) getBundleContentsFromGithub(ctx context.Context, repo
                 }
                 content, _, err := client.Contents.Find(ctx, repo, info.Path, "main")
                 if err != nil {
-//                      log.Error(err)
                         return nil, err
                 }
-                bundleFS[info.Path] = &fstest.MapFile{Data: content.Data}
-//              log.Println(info.Path)
-//              log.Println(string(content.Data))
+                bundleFS[info.Path[len("manifests/"):]] = &fstest.MapFile{Data: content.Data}
         }
 
         return bundleFS, nil
