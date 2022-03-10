@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"testing/fstest"
@@ -39,6 +40,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+        "github.com/drone/go-scm/scm/driver/github"
+        "github.com/drone/go-scm/scm"
 
 	rukpakv1alpha1 "github.com/operator-framework/rukpak/api/v1alpha1"
 	"github.com/operator-framework/rukpak/internal/storage"
@@ -259,7 +263,8 @@ func updateStatusUnpackFailing(u *updater.Updater, err error) error {
 }
 
 func (r *BundleReconciler) handleCompletedPod(ctx context.Context, u *updater.Updater, bundle *rukpakv1alpha1.Bundle, pod *corev1.Pod) error {
-	bundleFS, err := r.getBundleContents(ctx, pod)
+//	bundleFS, err := r.getBundleContents(ctx, pod)
+	bundleFS, err := r.getBundleContentsFromGithub(ctx, "operator-framework/combo")
 	if err != nil {
 		return updateStatusUnpackFailing(u, fmt.Errorf("get bundle contents: %w", err))
 	}
@@ -387,3 +392,38 @@ func (r *BundleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.ConfigMap{}).
 		Complete(r)
 }
+
+func (r *BundleReconciler) getBundleContentsFromGithub(ctx context.Context, repo string) (fs.FS, error) {
+        client, err := github.New("https://api.github.com")
+        if err != nil {
+//              log.Error(err)
+                return nil, err
+        }
+
+        client.Client = &http.Client{}
+        ctx = context.Background()
+
+        contentInfo, _, err := client.Contents.List(ctx, repo, "manifests", "main", scm.ListOptions{})
+        if err != nil {
+//              log.Error(err)
+                return nil, err
+        }
+
+        bundleFS := fstest.MapFS{}
+        for _, info := range contentInfo {
+                if info.Kind != scm.ContentKindFile {
+                        continue
+                }
+                content, _, err := client.Contents.Find(ctx, repo, info.Path, "main")
+                if err != nil {
+//                      log.Error(err)
+                        return nil, err
+                }
+                bundleFS[info.Path] = &fstest.MapFile{Data: content.Data}
+//              log.Println(info.Path)
+//              log.Println(string(content.Data))
+        }
+
+        return bundleFS, nil
+}
+
