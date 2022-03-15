@@ -11,6 +11,7 @@ KIND := kind
 VERSION_PATH := $(PKG)/internal/version
 GIT_COMMIT ?= $(shell git rev-parse HEAD)
 PKGS = $(shell go list ./...)
+CERT_MGR_VERSION=v1.7.1
 
 # kernel-style V=1 build verbosity
 ifeq ("$(origin V)", "command line")
@@ -93,7 +94,11 @@ install: install-plain ## Install all rukpak core CRDs and provisioners
 deploy: install-apis ## Deploy the operator to the current cluster
 	kubectl apply -f internal/provisioner/plain/manifests
 
-run: build-local-container kind-load deploy ## Build image and run operator in-cluster
+run: build-local-container kind-load cert-mgr deploy ## Build image and run operator in-cluster
+
+cert-mgr:
+	kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MGR_VERSION)/cert-manager.yaml
+	kubectl wait --for=condition=Available --namespace=cert-manager deployment/cert-manager-webhook --timeout=60s
 
 ##################
 # Build and Load #
@@ -129,7 +134,7 @@ kind-cluster: ## Standup a kind cluster for e2e testing usage
 	${KIND} create cluster --name ${KIND_CLUSTER_NAME}
 
 e2e: KIND_CLUSTER_NAME=rukpak-e2e
-e2e: build-container kind-cluster kind-load deploy test-e2e ## Run e2e tests against a kind cluster
+e2e: build-container kind-cluster kind-load cert-mgr deploy test-e2e ## Run e2e tests against a kind cluster
 
 ################
 # Hack / Tools #
