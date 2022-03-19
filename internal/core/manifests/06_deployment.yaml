@@ -15,7 +15,7 @@ spec:
       labels:
         app: core-webhook
     spec:
-      serviceAccountName: plain-provisioner-admin
+      serviceAccountName: rukpak-core-admin
       containers:
         - name: core-webhook
           command: ["/core"]
