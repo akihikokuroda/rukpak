@@ -92,6 +92,7 @@ install-plain: install-apis ## Install the rukpak CRDs and the plain provisioner
 install: install-plain ## Install all rukpak core CRDs and provisioners
 
 deploy: install-apis ## Deploy the operator to the current cluster
+	kubectl apply -f internal/core/manifests
 	kubectl apply -f internal/provisioner/plain/manifests
 
 run: build-local-container kind-load cert-mgr deploy ## Build image and run operator in-cluster

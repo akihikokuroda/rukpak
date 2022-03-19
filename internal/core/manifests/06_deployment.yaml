@@ -18,8 +18,8 @@ spec:
       serviceAccountName: plain-provisioner-admin
       containers:
         - name: core-webhook
-          command: /core
-	  args: run
+          command: ["/core"]
+          args: ["run"]
           image: quay.io/operator-framework/plain-provisioner:latest
           imagePullPolicy: IfNotPresent
           ports:
