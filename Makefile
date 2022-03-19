@@ -103,20 +103,23 @@ cert-mgr:
 ##################
 # Build and Load #
 ##################
-.PHONY: build bin/plain bin/unpack build-local-container kind-load kind-cluster
+.PHONY: build bin/plain bin/unpack bin/core build-local-container kind-load kind-cluster
 
 ##@ build/load:
 
 # Binary builds
 GO_BUILD := $(Q)go build
 VERSION_FLAGS=-ldflags "-X $(VERSION_PATH).GitCommit=$(GIT_COMMIT)"
-build: bin/plain bin/unpack
+build: bin/plain bin/unpack bin/core
 
 bin/plain:
 	CGO_ENABLED=0 go build $(VERSION_FLAGS) -o $@$(BIN_SUFFIX) ./internal/provisioner/plain
 
 bin/unpack:
 	CGO_ENABLED=0 go build $(VERSION_FLAGS) -o $@$(BIN_SUFFIX) ./cmd/unpack/...
+
+bin/core:
+	CGO_ENABLED=0 go build $(VERSION_FLAGS) -o $@$(BIN_SUFFIX) ./internal/core
 
 build-container: ## Builds provisioner container image locally
 	docker build -f Dockerfile -t $(IMAGE) .
