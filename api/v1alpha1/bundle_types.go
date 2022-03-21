@@ -34,6 +34,9 @@ const (
 	PhaseUnpacking = "Unpacking"
 	PhaseFailing   = "Failing"
 	PhaseUnpacked  = "Unpacked"
+
+	SourceGit   = "Git"
+	SourceImage = "Image"
 )
 
 // BundleSpec defines the desired state of Bundle
@@ -42,8 +45,29 @@ type BundleSpec struct {
 	ProvisionerClassName string `json:"provisionerClassName"`
 
 	// Image is the bundle image that backs the content of this bundle.
-	Image string `json:"image"`
+	Image  string       `json:"image,omitempty"`
+	Source BundleSource `json:"source,omitempty"`
 }
+
+// BundleSource defines the source of the bundle
+type BundleSource struct {
+	// Type is the source type backs the content of this bundle.
+	Type  string    `json:"type"`
+
+	// Git is the git repositry that backs the content of this bundle.
+	Git   GitSource `json:"git,omitempty"`
+
+	// Image is the bundle image that backs the content of this bundle.
+	Image string    `json:"image,omitempty"`
+}
+
+// GitSource defines the source git repository of the bundle
+type GitSource struct {
+	URL      string `json:"url"`
+	Name     string `json:"name"`
+	Revision string `json:"revision"`
+}
+
 
 type ProvisionerID string
 
