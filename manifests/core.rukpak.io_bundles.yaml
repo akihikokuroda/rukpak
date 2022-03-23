@@ -68,6 +68,8 @@ spec:
                           type: string
                         revision:
                           type: string
+                        secretName:
+                          type: string
                         url:
                           type: string
                     image:

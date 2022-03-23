@@ -46,6 +46,7 @@ import (
 	"github.com/operator-framework/rukpak/internal/storage"
 	"github.com/operator-framework/rukpak/internal/updater"
 	"github.com/operator-framework/rukpak/internal/util"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -366,10 +367,19 @@ func (r *BundleReconciler) handleGitSource(ctx context.Context, u *updater.Updat
 	if err != nil {
 		return err
 	}
-
-	bundleFS := fstest.MapFS{}
 	client.Client = &http.Client{}
 
+	accessToken, err := r.getAccessToken(ctx, bundle)
+	if err == nil && len(accessToken) != 0 {
+		ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: accessToken})
+		client.Client = &http.Client{
+			Transport: &oauth2.Transport{
+				Source: ts,
+			},
+		}
+	}
+
+	bundleFS := fstest.MapFS{}	
 	bundleFS, err = r.getBundleContentsFromGithub(ctx, client, git.Name, "manifests", git.URL, git.Revision, bundleFS)
 	if err != nil {
 		return updateStatusUnpackFailing(u, fmt.Errorf("get bundle contents: %w", err))
@@ -428,6 +438,14 @@ func (r *BundleReconciler) getBundleContentsFromGithub(ctx context.Context, clie
 		}
 	}
 	return bundleFS, nil
+}
+
+func (r *BundleReconciler) getAccessToken(ctx context.Context, bundle *rukpakv1alpha1.Bundle) (string, error) {
+	secret, err := r.KubeClient.CoreV1().Secrets(r.PodNamespace).Get(ctx, bundle.Spec.Source.Git.Secret, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	return string(secret.Data["token"]), nil
 }
 
 func getObjects(bundleFS fs.FS) ([]client.Object, error) {

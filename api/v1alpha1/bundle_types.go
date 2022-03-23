@@ -66,6 +66,7 @@ type GitSource struct {
 	URL      string `json:"url"`
 	Name     string `json:"name"`
 	Revision string `json:"revision"`
+	Secret   string `json:"secretName,,omitempty"`
 }
 
 
