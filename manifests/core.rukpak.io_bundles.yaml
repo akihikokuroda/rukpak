@@ -42,7 +42,6 @@ spec:
               description: BundleSpec defines the desired state of Bundle
               type: object
               required:
-                - image
                 - provisionerClassName
               properties:
                 image:
@@ -51,6 +50,34 @@ spec:
                 provisionerClassName:
                   description: ProvisionerClassName sets the name of the provisioner that should reconcile this BundleInstance.
                   type: string
+                source:
+                  description: BundleSource defines the source of the bundle
+                  type: object
+                  required:
+                    - type
+                  properties:
+                    git:
+                      description: Git is the git repositry that backs the content of this bundle.
+                      type: object
+                      required:
+                        - name
+                        - revision
+                        - url
+                      properties:
+                        name:
+                          type: string
+                        revision:
+                          type: string
+                        secretName:
+                          type: string
+                        url:
+                          type: string
+                    image:
+                      description: Image is the bundle image that backs the content of this bundle.
+                      type: string
+                    type:
+                      description: Type is the source type backs the content of this bundle.
+                      type: string
             status:
               description: BundleStatus defines the observed state of Bundle
               type: object

@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"testing/fstest"
@@ -39,11 +40,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
+	"github.com/drone/go-scm/scm"
+	"github.com/drone/go-scm/scm/driver/github"
 	rukpakv1alpha1 "github.com/operator-framework/rukpak/api/v1alpha1"
 	"github.com/operator-framework/rukpak/internal/storage"
 	"github.com/operator-framework/rukpak/internal/updater"
 	"github.com/operator-framework/rukpak/internal/util"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -94,30 +97,37 @@ func (r *BundleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ c
 		}
 	}()
 	u.UpdateStatus(updater.EnsureObservedGeneration(bundle.Generation))
+	switch sourceType := bundle.Spec.Source.Type; sourceType {
+	case rukpakv1alpha1.SourceImage:
+		pod := &corev1.Pod{}
+		if op, err := r.ensureUnpackPod(ctx, bundle, pod); err != nil {
+			u.UpdateStatus(updater.SetBundleInfo(nil), updater.EnsureBundleDigest(""))
+			return ctrl.Result{}, updateStatusUnpackFailing(&u, fmt.Errorf("ensure unpack pod: %w", err))
+		} else if op == controllerutil.OperationResultCreated || op == controllerutil.OperationResultUpdated || pod.DeletionTimestamp != nil {
+			updateStatusUnpackPending(&u)
+			return ctrl.Result{}, nil
+		}
 
-	pod := &corev1.Pod{}
-	if op, err := r.ensureUnpackPod(ctx, bundle, pod); err != nil {
-		u.UpdateStatus(updater.SetBundleInfo(nil), updater.EnsureBundleDigest(""))
-		return ctrl.Result{}, updateStatusUnpackFailing(&u, fmt.Errorf("ensure unpack pod: %w", err))
-	} else if op == controllerutil.OperationResultCreated || op == controllerutil.OperationResultUpdated || pod.DeletionTimestamp != nil {
-		updateStatusUnpackPending(&u)
-		return ctrl.Result{}, nil
-	}
-
-	switch phase := pod.Status.Phase; phase {
-	case corev1.PodPending:
-		r.handlePendingPod(&u, pod)
-		return ctrl.Result{}, nil
-	case corev1.PodRunning:
-		r.handleRunningPod(&u)
-		return ctrl.Result{}, nil
-	case corev1.PodFailed:
-		return ctrl.Result{}, r.handleFailedPod(ctx, &u, pod)
-	case corev1.PodSucceeded:
-		return ctrl.Result{}, r.handleCompletedPod(ctx, &u, bundle, pod)
+		switch phase := pod.Status.Phase; phase {
+		case corev1.PodPending:
+			r.handlePendingPod(&u, pod)
+			return ctrl.Result{}, nil
+		case corev1.PodRunning:
+			r.handleRunningPod(&u)
+			return ctrl.Result{}, nil
+		case corev1.PodFailed:
+			return ctrl.Result{}, r.handleFailedPod(ctx, &u, pod)
+		case corev1.PodSucceeded:
+			return ctrl.Result{}, r.handleCompletedPod(ctx, &u, bundle, pod)
+		default:
+			return ctrl.Result{}, r.handleUnexpectedPod(ctx, &u, pod)
+		}
+	case rukpakv1alpha1.SourceGit:
+		return ctrl.Result{}, r.handleGitSource(ctx, &u, bundle)
 	default:
-		return ctrl.Result{}, r.handleUnexpectedPod(ctx, &u, pod)
+		return ctrl.Result{}, fmt.Errorf("unknown source type: %v", sourceType)
 	}
+
 }
 
 func (r *BundleReconciler) handleUnexpectedPod(ctx context.Context, u *updater.Updater, pod *corev1.Pod) error {
@@ -224,7 +234,7 @@ func (r *BundleReconciler) ensureUnpackPod(ctx context.Context, bundle *rukpakv1
 			pod.Spec.Containers = make([]corev1.Container, 1)
 		}
 		pod.Spec.Containers[0].Name = bundleUnpackContainerName
-		pod.Spec.Containers[0].Image = bundle.Spec.Image
+		pod.Spec.Containers[0].Image = bundle.Spec.Source.Image
 		pod.Spec.Containers[0].ImagePullPolicy = corev1.PullAlways
 		pod.Spec.Containers[0].Command = []string{"/util/unpack", "--bundle-dir", "/manifests"}
 		pod.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{{Name: "util", MountPath: "/util"}}
@@ -341,6 +351,101 @@ func (r *BundleReconciler) getBundleImageDigest(pod *corev1.Pod) (string, error)
 		}
 	}
 	return "", fmt.Errorf("bundle image digest not found")
+}
+
+func (r *BundleReconciler) handleGitSource(ctx context.Context, u *updater.Updater, bundle *rukpakv1alpha1.Bundle) error {
+	// temporary to avoid access to github repeatedly
+	if bundle.Status.Phase == rukpakv1alpha1.PhaseUnpacked {
+		return nil
+	}
+	git := bundle.Spec.Source.Git
+	if git.Name == "" || git.URL == "" || git.Revision == "" {
+		return updateStatusUnpackFailing(u, fmt.Errorf("missing git information"))
+	}
+	
+	client, err := github.New(git.URL)
+	if err != nil {
+		return err
+	}
+	client.Client = &http.Client{}
+
+	accessToken, err := r.getAccessToken(ctx, bundle)
+	if err == nil && len(accessToken) != 0 {
+		ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: accessToken})
+		client.Client = &http.Client{
+			Transport: &oauth2.Transport{
+				Source: ts,
+			},
+		}
+	}
+
+	bundleFS := fstest.MapFS{}	
+	bundleFS, err = r.getBundleContentsFromGithub(ctx, client, git.Name, "manifests", git.URL, git.Revision, bundleFS)
+	if err != nil {
+		return updateStatusUnpackFailing(u, fmt.Errorf("get bundle contents: %w", err))
+	}
+
+	objects, err := getObjects(bundleFS)
+	if err != nil {
+		return updateStatusUnpackFailing(u, fmt.Errorf("get objects from bundle manifests: %w", err))
+	}
+
+	if err := r.Storage.Store(ctx, bundle, objects); err != nil {
+		return updateStatusUnpackFailing(u, fmt.Errorf("persist bundle objects: %w", err))
+	}
+
+	info := &rukpakv1alpha1.BundleInfo{}
+	for _, obj := range objects {
+		gvk := obj.GetObjectKind().GroupVersionKind()
+		info.Objects = append(info.Objects, rukpakv1alpha1.BundleObject{
+			Group:     gvk.Group,
+			Version:   gvk.Version,
+			Kind:      gvk.Kind,
+			Name:      obj.GetName(),
+			Namespace: obj.GetNamespace(),
+		})
+	}
+
+	u.UpdateStatus(
+		updater.SetBundleInfo(info),
+		updater.SetPhase(rukpakv1alpha1.PhaseUnpacked),
+		updater.EnsureCondition(metav1.Condition{
+			Type:   rukpakv1alpha1.TypeUnpacked,
+			Status: metav1.ConditionTrue,
+			Reason: rukpakv1alpha1.ReasonUnpackSuccessful,
+		}),
+	)
+
+	return nil
+}
+
+func (r *BundleReconciler) getBundleContentsFromGithub(ctx context.Context, client *scm.Client, repo, path, url, rev string, bundleFS fstest.MapFS) (fstest.MapFS, error) {
+	contentInfo, _, err := client.Contents.List(ctx, repo, path, rev, scm.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for _, info := range contentInfo {
+		if info.Kind == scm.ContentKindDirectory {
+			bundleFS, err = r.getBundleContentsFromGithub(ctx, client, repo, info.Path, url, rev, bundleFS)
+			continue
+		}
+		if info.Kind == scm.ContentKindFile {
+			content, _, err := client.Contents.Find(ctx, repo, info.Path, rev)
+			if err != nil {
+				return nil, err
+			}
+			bundleFS[info.Path[len(path)+1:]] = &fstest.MapFile{Data: content.Data}
+		}
+	}
+	return bundleFS, nil
+}
+
+func (r *BundleReconciler) getAccessToken(ctx context.Context, bundle *rukpakv1alpha1.Bundle) (string, error) {
+	secret, err := r.KubeClient.CoreV1().Secrets(r.PodNamespace).Get(ctx, bundle.Spec.Source.Git.Secret, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	return string(secret.Data["token"]), nil
 }
 
 func getObjects(bundleFS fs.FS) ([]client.Object, error) {
