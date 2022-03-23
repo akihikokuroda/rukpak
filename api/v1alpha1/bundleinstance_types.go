@@ -46,7 +46,8 @@ type BundleInstanceSpec struct {
 	ProvisionerClassName string `json:"provisionerClassName"`
 
 	// BundleName is the name of the bundle that this instance is managing on the cluster.
-	BundleName string `json:"bundleName"`
+	BundleName string      `json:"bundleName,omitempty"`
+	BundleSpec *BundleSpec `json:"bundleSpec,omitempty"`
 }
 
 // BundleInstanceStatus defines the observed state of BundleInstance
