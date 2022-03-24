@@ -47,6 +47,7 @@ type BundleInstanceSpec struct {
 
 	// BundleName is the name of the bundle that this instance is managing on the cluster.
 	BundleName string      `json:"bundleName,omitempty"`
+	// BundleSpec is the spec of bundle that this instance is manageing on the cluster
 	BundleSpec *BundleSpec `json:"bundleSpec,omitempty"`
 }
 
