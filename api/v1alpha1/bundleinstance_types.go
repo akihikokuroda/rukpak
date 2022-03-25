@@ -48,7 +48,7 @@ type BundleInstanceSpec struct {
 	// BundleName is the name of the bundle that this instance is managing on the cluster.
 	BundleName string      `json:"bundleName,omitempty"`
 	// BundleSpec is the spec of bundle that this instance is manageing on the cluster
-	BundleSpec *BundleSpec `json:"bundleSpec,omitempty"`
+	BundleSpec BundleSpec `json:"bundleSpec,omitempty"`
 }
 
 // BundleInstanceStatus defines the observed state of BundleInstance
@@ -73,8 +73,8 @@ type BundleInstance struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   BundleInstanceSpec   `json:"spec"`
-	Status BundleInstanceStatus `json:"status,omitempty"`
+	Spec         BundleInstanceSpec   `json:"spec"`
+	Status       BundleInstanceStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true

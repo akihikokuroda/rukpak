@@ -73,6 +73,10 @@ func PodName(provisionerName, bundleName string) string {
 	return fmt.Sprintf("%s-unpack-bundle-%s", provisionerName, bundleName)
 }
 
+func BundleName(embeddedName, bundleInstanceName string) string {
+	return fmt.Sprintf("%s-%s", embeddedName, bundleInstanceName)
+}
+
 func BundleLabels(bundleName string) map[string]string {
 	return map[string]string{"core.rukpak.io/bundle-name": bundleName}
 }

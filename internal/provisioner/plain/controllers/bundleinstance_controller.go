@@ -52,6 +52,7 @@ import (
 
 const (
 	plainBundleProvisionerID = "core.rukpak.io/plain"
+	embeddedBundleName = "embedded"
 )
 
 // BundleInstanceReconciler reconciles a BundleInstance object
@@ -102,21 +103,34 @@ func (r *BundleInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}()
 
 	b := &rukpakv1alpha1.Bundle{}
-	if err := r.Get(ctx, types.NamespacedName{Name: bi.Spec.BundleName}, b); err != nil {
-		bundleStatus := metav1.ConditionUnknown
-		if apierrors.IsNotFound(err) {
-			bundleStatus = metav1.ConditionFalse
+	bundleName := bi.Spec.BundleName
+	if bundleName == "" && bi.Status.InstalledBundleName == "" {
+		if op , err := ensureBundle(ctx, bi, b); err != nil {
+			// update status
+			return ctrl.Result{}, err
+		} else if op == controllerutil.OperationResultCreated || op == controllerutil.OperationResultUpdated {
+			// update status
+			return ctrl.Result{}, err
 		}
-		meta.SetStatusCondition(&bi.Status.Conditions, metav1.Condition{
-			Type:    rukpakv1alpha1.TypeHasValidBundle,
-			Status:  bundleStatus,
-			Reason:  rukpakv1alpha1.ReasonBundleLookupFailed,
-			Message: err.Error(),
-		})
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		bundleName = b.GetName()
+	} else if bundleName == "" {
+		bundleName = bi.Status.InstalledBundleName
+		if err := r.Get(ctx, types.NamespacedName{Name: bundleName}, b); err != nil {
+			bundleStatus := metav1.ConditionUnknown
+			if apierrors.IsNotFound(err) {
+				bundleStatus = metav1.ConditionFalse
+			}
+			meta.SetStatusCondition(&bi.Status.Conditions, metav1.Condition{
+				Type:    rukpakv1alpha1.TypeHasValidBundle,
+				Status:  bundleStatus,
+				Reason:  rukpakv1alpha1.ReasonBundleLookupFailed,
+				Message: err.Error(),
+			})
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
 	}
 
-	desiredObjects, err := r.loadBundle(ctx, bi)
+	desiredObjects, err := r.loadBundle(ctx, bi, bundleName)
 	if err != nil {
 		var bnuErr *errBundleNotUnpacked
 		if errors.As(err, &bnuErr) {
@@ -268,8 +282,25 @@ func (r *BundleInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		Status: metav1.ConditionTrue,
 		Reason: rukpakv1alpha1.ReasonInstallationSucceeded,
 	})
-	bi.Status.InstalledBundleName = bi.Spec.BundleName
+	bi.Status.InstalledBundleName = bundleName
 	return ctrl.Result{}, nil
+}
+
+func (r *BundleInstanceReconciler) ensureBundle(ctx context.Context, bi *rukpakv1alpha1.BundleInstance, bundle *rukpakv1alpha1.Bundle) (controllerutil.OperationResult, error) {
+	controllerRef := metav1.NewControllerRef(bi, bi.GroupVersionKind())
+	bundle.SetName(util.BundleName(embeddedBundleName, bi.Name))
+	bundle.SetNamespace(r.PodNamespace)
+
+	return util.CreateOrRecreate(ctx, r.Client, bundle, func() error {
+		pod.SetLabels(map[string]string{
+			"core.rukpak.io/owner-kind": bi.Kind,
+			"core.rukpak.io/owner-name": bi.Name,
+		})
+		bundle.SetOwnerReferences([]metav1.OwnerReference{*controllerRef})
+		bundle.Spec = bi.Spec.BundleSpec
+
+		return nil
+	})
 }
 
 type releaseState string
@@ -316,10 +347,10 @@ func (err errBundleNotUnpacked) Error() string {
 	return fmt.Sprintf("%s, current phase=%s", baseError, err.currentPhase)
 }
 
-func (r *BundleInstanceReconciler) loadBundle(ctx context.Context, bi *rukpakv1alpha1.BundleInstance) ([]client.Object, error) {
+func (r *BundleInstanceReconciler) loadBundle(ctx context.Context, bi *rukpakv1alpha1.BundleInstance, bundleName string) ([]client.Object, error) {
 	b := &rukpakv1alpha1.Bundle{}
-	if err := r.Get(ctx, types.NamespacedName{Name: bi.Spec.BundleName}, b); err != nil {
-		return nil, fmt.Errorf("get bundle %q: %w", bi.Spec.BundleName, err)
+	if err := r.Get(ctx, types.NamespacedName{Name: bundleName}, b); err != nil {
+		return nil, fmt.Errorf("get bundle %q: %w", bundleName, err)
 	}
 	if b.Status.Phase != rukpakv1alpha1.PhaseUnpacked {
 		return nil, &errBundleNotUnpacked{currentPhase: b.Status.Phase}

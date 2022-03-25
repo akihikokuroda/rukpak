@@ -47,12 +47,39 @@ spec:
               description: BundleInstanceSpec defines the desired state of BundleInstance
               type: object
               required:
-                - bundleName
                 - provisionerClassName
               properties:
                 bundleName:
                   description: BundleName is the name of the bundle that this instance is managing on the cluster.
                   type: string
+                bundleSpec:
+                  description: BundleSpec is the spec of bundle that this instance is manageing on the cluster
+                  type: object
+                  required:
+                    - provisionerClassName
+                    - source
+                  properties:
+                    provisionerClassName:
+                      description: ProvisionerClassName sets the name of the provisioner that should reconcile this BundleInstance.
+                      type: string
+                    source:
+                      description: Source defines the configuration for the underlying Bundle content.
+                      type: object
+                      required:
+                        - type
+                      properties:
+                        image:
+                          description: Image is the bundle image that backs the content of this bundle.
+                          type: object
+                          required:
+                            - ref
+                          properties:
+                            ref:
+                              description: Ref contains the reference to a container image containing Bundle contents.
+                              type: string
+                        type:
+                          description: Type defines the kind of Bundle content being sourced.
+                          type: string
                 provisionerClassName:
                   description: ProvisionerClassName sets the name of the provisioner that should reconcile this BundleInstance.
                   type: string
