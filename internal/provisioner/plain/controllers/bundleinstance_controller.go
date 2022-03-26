@@ -39,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
@@ -105,7 +106,7 @@ func (r *BundleInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	b := &rukpakv1alpha1.Bundle{}
 	bundleName := bi.Spec.BundleName
 	if bundleName == "" && bi.Status.InstalledBundleName == "" {
-		if op , err := ensureBundle(ctx, bi, b); err != nil {
+		if op , err := r.ensureBundle(ctx, bi, b); err != nil {
 			// update status
 			return ctrl.Result{}, err
 		} else if op == controllerutil.OperationResultCreated || op == controllerutil.OperationResultUpdated {
@@ -126,7 +127,7 @@ func (r *BundleInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				Reason:  rukpakv1alpha1.ReasonBundleLookupFailed,
 				Message: err.Error(),
 			})
-			return ctrl.Result{}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 	}
 
@@ -143,7 +144,7 @@ func (r *BundleInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				Status: metav1.ConditionFalse,
 				Reason: reason,
 			})
-			return ctrl.Result{}, nil
+			return ctrl.Result{Requeue: true,}, nil
 		}
 		meta.SetStatusCondition(&bi.Status.Conditions, metav1.Condition{
 			Type:    rukpakv1alpha1.TypeHasValidBundle,
@@ -289,10 +290,9 @@ func (r *BundleInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 func (r *BundleInstanceReconciler) ensureBundle(ctx context.Context, bi *rukpakv1alpha1.BundleInstance, bundle *rukpakv1alpha1.Bundle) (controllerutil.OperationResult, error) {
 	controllerRef := metav1.NewControllerRef(bi, bi.GroupVersionKind())
 	bundle.SetName(util.BundleName(embeddedBundleName, bi.Name))
-	bundle.SetNamespace(r.PodNamespace)
 
 	return util.CreateOrRecreate(ctx, r.Client, bundle, func() error {
-		pod.SetLabels(map[string]string{
+		bundle.SetLabels(map[string]string{
 			"core.rukpak.io/owner-kind": bi.Kind,
 			"core.rukpak.io/owner-name": bi.Name,
 		})
