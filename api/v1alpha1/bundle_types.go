@@ -80,6 +80,9 @@ type GitSource struct {
 	// is required. Setting more than one field or zero fields will result in an
 	// error.
 	Ref GitRef `json:"ref"`
+	// Secret contains the secret name that has authorization information and is in the namespace that the provisioner is deployed.
+	// The secret contains the user ID (key: user) and the personal access token to the repository (key: token)
+	Secret string `json:"secret,omitempty"`
 }
 
 type GitRef struct {

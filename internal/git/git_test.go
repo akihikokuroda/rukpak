@@ -86,6 +86,18 @@ func TestCheckoutCommand(t *testing.T) {
 			expected: "",
 			err:      errors.New("cannot specify both branch and commit: only one is allowed"),
 		},
+		{
+			source: rukpakv1alpha1.GitSource{
+				Repository: "https://github.com/operator-framework/combo",
+				Ref: rukpakv1alpha1.GitRef{
+					Commit: "4567031e158b42263e70a7c63e29f8981a4a6135",
+				},
+				Secret: "secretname",
+			},
+			expected: fmt.Sprintf("git clone %s %s && cd %s && git checkout %s && rm -r .git && cp -r %s/. /bundle",
+				"https://$USER:$TOKEN@github.com/operator-framework/combo", repositoryName, repositoryName, "4567031e158b42263e70a7c63e29f8981a4a6135",
+				"./"),
+		},
 	}
 
 	for _, tt := range gitSources {

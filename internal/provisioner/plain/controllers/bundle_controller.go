@@ -436,6 +436,12 @@ func bundleGitRepoPod(pod *corev1.Pod, source rukpakv1alpha1.GitSource, unpackIm
 	}
 	pod.Spec.InitContainers[1].Command = []string{"/bin/sh", "-c", cmd}
 	pod.Spec.InitContainers[1].VolumeMounts = []corev1.VolumeMount{{Name: "bundle", MountPath: "/bundle"}}
+	if source.Secret != "" {
+		pod.Spec.InitContainers[1].Env = []corev1.EnvVar{
+			{Name: "USER", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: source.Secret}, Key: "user"}}},
+			{Name: "TOKEN", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: source.Secret}, Key: "token"}}},
+		}
+	}
 
 	if len(pod.Spec.Containers) != 1 {
 		pod.Spec.Containers = make([]corev1.Container, 1)

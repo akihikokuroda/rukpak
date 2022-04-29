@@ -94,6 +94,12 @@ spec:
                           containing the bundle. Repository is required and the URL
                           should be parsable by a standard git tool.
                         type: string
+                      secret:
+                        description: 'Secret contains the secret name that has authorization
+                          information and is in the namespace that the provisioner
+                          is deployed. The secret contains the user ID (key: user)
+                          and the personal access token to the repository (key: token)'
+                        type: string
                     required:
                     - ref
                     - repository
