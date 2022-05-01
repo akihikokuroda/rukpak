@@ -11,6 +11,7 @@ import (
 const (
 	defaultDirectory = "./"
 	repositoryName   = "repo"
+	sslNoVerify      = "GIT_SSL_NO_VERIFY=true "
 )
 
 type checkoutCmd struct {
@@ -33,6 +34,7 @@ func (c *checkoutCmd) String() (string, error) {
 	var branch = c.Ref.Branch
 	var commit = c.Ref.Commit
 	var tag = c.Ref.Tag
+	var preset = ""
 
 	if c.Secret != "" {
 		repositoryURL, err := url.Parse(repository)
@@ -42,25 +44,28 @@ func (c *checkoutCmd) String() (string, error) {
 		repositoryURL.User = url.UserPassword("$USER", "$TOKEN")
 		repository = repositoryURL.String()
 	}
+	if c.SslNoVerify {
+		preset = sslNoVerify
+	}
 
 	if directory == "" {
 		directory = defaultDirectory
 	}
 
 	if commit != "" {
-		checkoutCommand = fmt.Sprintf("git clone %s %s && cd %s && git checkout %s && rm -r .git && cp -r %s/. /bundle",
-			repository, repositoryName, repositoryName, commit, directory)
+		checkoutCommand = fmt.Sprintf("%sgit clone %s %s && cd %s && %sgit checkout %s && rm -r .git && cp -r %s/. /bundle",
+			preset, repository, repositoryName, repositoryName, preset, commit, directory)
 		return checkoutCommand, nil
 	}
 
 	if tag != "" {
-		checkoutCommand = fmt.Sprintf("git clone --depth 1 --branch %s %s %s && cd %s && git checkout tags/%s && rm -r .git && cp -r %s/. /bundle",
-			tag, repository, repositoryName, repositoryName, tag, directory)
+		checkoutCommand = fmt.Sprintf("%sgit clone --depth 1 --branch %s %s %s && cd %s && %sgit checkout tags/%s && rm -r .git && cp -r %s/. /bundle",
+			preset, tag, repository, repositoryName, repositoryName, preset, tag, directory)
 		return checkoutCommand, nil
 	}
 
-	checkoutCommand = fmt.Sprintf("git clone --depth 1 --branch %s %s %s && cd %s && git checkout %s && rm -r .git && cp -r %s/. /bundle",
-		branch, repository, repositoryName, repositoryName, branch, directory)
+	checkoutCommand = fmt.Sprintf("%sgit clone --depth 1 --branch %s %s %s && cd %s && %sgit checkout %s && rm -r .git && cp -r %s/. /bundle",
+		preset, branch, repository, repositoryName, repositoryName, preset, branch, directory)
 	return checkoutCommand, nil
 }
 

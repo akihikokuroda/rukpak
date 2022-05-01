@@ -83,6 +83,8 @@ type GitSource struct {
 	// Secret contains the secret name that has authorization information and is in the namespace that the provisioner is deployed.
 	// The secret contains the user ID (key: user) and the personal access token to the repository (key: token)
 	Secret string `json:"secret,omitempty"`
+	// If SslNoVerify is set true, the server certificate is ignored.
+	SslNoVerify bool `json:"sslNoVerify,omitempty"`
 }
 
 type GitRef struct {
