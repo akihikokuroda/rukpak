@@ -436,10 +436,16 @@ func bundleGitRepoPod(pod *corev1.Pod, source rukpakv1alpha1.GitSource, unpackIm
 	}
 	pod.Spec.InitContainers[1].Command = []string{"/bin/sh", "-c", cmd}
 	pod.Spec.InitContainers[1].VolumeMounts = []corev1.VolumeMount{{Name: "bundle", MountPath: "/bundle"}}
-	if source.Secret != "" {
+	if source.AuthorizationType == rukpakv1alpha1.AuthorizationTypeCertificate && source.Secret != "" {
+		pod.Spec.InitContainers[1].VolumeMounts = append(pod.Spec.InitContainers[1].VolumeMounts, corev1.VolumeMount{Name: "certificate", MountPath: "/certificate", ReadOnly: true})
+		pod.Spec.InitContainers[1].VolumeMounts = append(pod.Spec.InitContainers[1].VolumeMounts, corev1.VolumeMount{Name: "hosts", MountPath: "/hosts", ReadOnly: true})
+	}
+	var optional = true
+	var mode int32 = 0600
+	if source.AuthorizationType == rukpakv1alpha1.AuthorizationTypeAccessToken && source.Secret != "" {
 		pod.Spec.InitContainers[1].Env = []corev1.EnvVar{
-			{Name: "USER", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: source.Secret}, Key: "user"}}},
-			{Name: "TOKEN", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: source.Secret}, Key: "token"}}},
+			{Name: "USER", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: source.Secret}, Key: "user", Optional: &optional}}},
+			{Name: "TOKEN", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: source.Secret}, Key: "token", Optional: &optional}}},
 		}
 	}
 
@@ -457,6 +463,14 @@ func bundleGitRepoPod(pod *corev1.Pod, source rukpakv1alpha1.GitSource, unpackIm
 	pod.Spec.Volumes = []corev1.Volume{
 		{Name: "util", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 		{Name: "bundle", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+	}
+	if source.AuthorizationType == rukpakv1alpha1.AuthorizationTypeCertificate && source.Secret != "" {
+		pod.Spec.Volumes = append(pod.Spec.Volumes,
+			corev1.Volume{Name: "certificate",
+				VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: source.Secret, Items: []corev1.KeyToPath{{Key: "certificate", Path: "certificate"},}, DefaultMode: &mode, Optional: &optional}}})
+		pod.Spec.Volumes = append(pod.Spec.Volumes,
+			corev1.Volume{Name: "hosts",
+				VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: source.Secret, Items: []corev1.KeyToPath{{Key: "hosts", Path: "hosts"},}, DefaultMode: &mode, Optional: &optional}}})
 	}
 	return pod, nil
 }

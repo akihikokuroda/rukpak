@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	defaultDirectory = "./"
-	repositoryName   = "repo"
-	sslNoVerify      = "GIT_SSL_NO_VERIFY=true "
+	defaultDirectory    = "./"
+	repositoryName      = "repo"
+	sslNoVerify         = "GIT_SSL_NO_VERIFY=true "
+	certificateLocation = `GIT_SSH_COMMAND="ssh -i /certificate/certificate -o UserKnownHostsFile=/hosts/hosts" `
 )
 
 type checkoutCmd struct {
@@ -36,7 +37,7 @@ func (c *checkoutCmd) String() (string, error) {
 	var tag = c.Ref.Tag
 	var preset = ""
 
-	if c.Secret != "" {
+	if c.AuthorizationType == rukpakv1alpha1.AuthorizationTypeAccessToken  && c.Secret != "" {
 		repositoryURL, err := url.Parse(repository)
 		if err != nil {
 			return "", err
@@ -44,8 +45,11 @@ func (c *checkoutCmd) String() (string, error) {
 		repositoryURL.User = url.UserPassword("$USER", "$TOKEN")
 		repository = repositoryURL.String()
 	}
+	if c.AuthorizationType == rukpakv1alpha1.AuthorizationTypeCertificate  && c.Secret != "" {
+		preset = certificateLocation
+	}
 	if c.SslNoVerify {
-		preset = sslNoVerify
+		preset = preset + sslNoVerify
 	}
 
 	if directory == "" {

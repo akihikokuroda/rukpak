@@ -62,6 +62,10 @@ spec:
                     description: Git is the git repository that backs the content
                       of this Bundle.
                     properties:
+                      authorizationType:
+                        description: AuthorizatonType defines the kind of authorizaton
+                          method being used.
+                        type: string
                       directory:
                         description: Directory refers to the location of the bundle
                           within the git repository. Directory is optional and if
@@ -95,10 +99,6 @@ spec:
                           should be parsable by a standard git tool.
                         type: string
                       secret:
-                        description: 'Secret contains the secret name that has authorization
-                          information and is in the namespace that the provisioner
-                          is deployed. The secret contains the user ID (key: user)
-                          and the personal access token to the repository (key: token)'
                         type: string
                       sslNoVerify:
                         description: If SslNoVerify is set true, the server certificate

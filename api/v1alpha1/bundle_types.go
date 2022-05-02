@@ -31,6 +31,9 @@ const (
 	SourceTypeImage = "image"
 	SourceTypeGit   = "git"
 
+	AuthorizationTypeCertificate = "certificate"
+	AuthorizationTypeAccessToken = "accessToken"
+
 	TypeUnpacked = "Unpacked"
 
 	ReasonUnpackPending    = "UnpackPending"
@@ -80,8 +83,12 @@ type GitSource struct {
 	// is required. Setting more than one field or zero fields will result in an
 	// error.
 	Ref GitRef `json:"ref"`
+	// AuthorizatonType defines the kind of authorizaton method being used.
+	AuthorizationType string `json:"authorizationType,omitempty"`
 	// Secret contains the secret name that has authorization information and is in the namespace that the provisioner is deployed.
-	// The secret contains the user ID (key: user) and the personal access token to the repository (key: token)
+	// The secret contains the user ID (key: user) and the personal access token to the repository (key: token) for the access token authorization type
+	// The secret contains the ssh private certificate registered to the repository (key: certificate) for the certificate authorization type
+	
 	Secret string `json:"secret,omitempty"`
 	// If SslNoVerify is set true, the server certificate is ignored.
 	SslNoVerify bool `json:"sslNoVerify,omitempty"`

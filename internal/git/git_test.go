@@ -92,6 +92,7 @@ func TestCheckoutCommand(t *testing.T) {
 				Ref: rukpakv1alpha1.GitRef{
 					Commit: "4567031e158b42263e70a7c63e29f8981a4a6135",
 				},
+				AuthorizationType: rukpakv1alpha1.AuthorizationTypeAccessToken,
 				Secret: "secretname",
 			},
 			expected: fmt.Sprintf("git clone %s %s && cd %s && git checkout %s && rm -r .git && cp -r %s/. /bundle",
@@ -104,11 +105,26 @@ func TestCheckoutCommand(t *testing.T) {
 				Ref: rukpakv1alpha1.GitRef{
 					Commit: "4567031e158b42263e70a7c63e29f8981a4a6135",
 				},
+				AuthorizationType: rukpakv1alpha1.AuthorizationTypeAccessToken,
 				Secret:      "secretname",
 				SslNoVerify: true,
 			},
 			expected: fmt.Sprintf("%sgit clone %s %s && cd %s && %sgit checkout %s && rm -r .git && cp -r %s/. /bundle",
 				"GIT_SSL_NO_VERIFY=true ", "https://$USER:$TOKEN@github.com/operator-framework/combo", repositoryName, repositoryName, "GIT_SSL_NO_VERIFY=true ", "4567031e158b42263e70a7c63e29f8981a4a6135",
+				"./"),
+		},
+		{
+			source: rukpakv1alpha1.GitSource{
+				Repository: "https://github.com/operator-framework/combo",
+				Ref: rukpakv1alpha1.GitRef{
+					Commit: "4567031e158b42263e70a7c63e29f8981a4a6135",
+				},
+				AuthorizationType: rukpakv1alpha1.AuthorizationTypeCertificate,
+				Secret:      "secretname",
+				SslNoVerify: true,
+			},
+			expected: fmt.Sprintf("%sgit clone %s %s && cd %s && %sgit checkout %s && rm -r .git && cp -r %s/. /bundle",
+				`GIT_SSH_COMMAND="ssh -i /certificate/certificate -o UserKnownHostsFile=/hosts/hosts" GIT_SSL_NO_VERIFY=true `, "https://github.com/operator-framework/combo", repositoryName, repositoryName, `GIT_SSH_COMMAND="ssh -i /certificate/certificate -o UserKnownHostsFile=/hosts/hosts" GIT_SSL_NO_VERIFY=true `, "4567031e158b42263e70a7c63e29f8981a4a6135",
 				"./"),
 		},
 	}
