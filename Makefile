@@ -69,7 +69,7 @@ verify: tidy generate ## Verify the current code generation and lint
 ###########
 # Testing #
 ###########
-.PHONY: test test-unit test-e2e
+.PHONY: test test-unit test-e2e image-registry
 
 ##@ testing:
 
@@ -90,6 +90,9 @@ e2e: build-container kind-cluster kind-load kind-load-bundles run test-e2e ## Ru
 kind-cluster: ## Standup a kind cluster for e2e testing usage
 	${KIND} delete cluster --name ${KIND_CLUSTER_NAME}
 	${KIND} create cluster --name ${KIND_CLUSTER_NAME}
+
+image-registry: ## setup in-cluster image registry 
+	. ./tools/imageregistry/setup_imageregistry.sh
 
 ###################
 # Install and Run #
@@ -116,7 +119,7 @@ uninstall: ## Remove all rukpak resources from the cluster
 ##################
 # Build and Load #
 ##################
-.PHONY: build plain unpack core build-container kind-load kind-load-bundles kind-cluster
+.PHONY: build plain unpack core build-container kind-load kind-load-bundles kind-cluster registry-load-bundles
 
 ##@ build/load:
 
@@ -161,6 +164,9 @@ kind-load-bundles: ## Load the e2e testdata container images into a kind cluster
 
 kind-load: ## Loads the currently constructed image onto the cluster
 	${KIND} load docker-image $(IMAGE) --name $(KIND_CLUSTER_NAME)
+
+registry-load-bundles: ## Load the e2e testdata container images into registry
+	./tools/imageregistry/load_test_image.sh
 
 ###########
 # Release #
