@@ -10,5 +10,6 @@ kubectl exec nerdctl -n $REGISTRY_NAMESPACE -- sh -c "nerdctl login -u myuser -p
 for x in $(docker images --format "{{.Repository}}:{{.Tag}}" | grep testdata); do
     kubectl exec nerdctl -n $REGISTRY_NAMESPACE -- sh -c "nerdctl -n k8s.io tag $x $DNS_NAME:5000${x##testdata}"
     kubectl exec nerdctl -n $REGISTRY_NAMESPACE -- sh -c "nerdctl -n k8s.io push $DNS_NAME:5000${x##testdata} --insecure-registry"
+    kubectl exec nerdctl -n $REGISTRY_NAMESPACE -- sh -c "nerdctl -n k8s.io rmi $DNS_NAME:5000${x##testdata} --insecure-registry"
 done
 
