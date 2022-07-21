@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -105,6 +106,25 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			l.Error(err, "failed to patch status")
 		}
 	}()
+	data, err := bd.Spec.Config.MarshalJSON()
+	if err != nil {
+		fmt.Printf("ERROR: %v\n", err)
+	}
+	fmt.Printf("BD %+v\n", string(data))
+	type keyvalue map[string]map[string]string
+	var config keyvalue
+	err = json.Unmarshal(data, &config)
+	if err != nil {
+		fmt.Printf("ERROR: %v\n", err)
+	}
+	fmt.Printf("CONFIG: %+v\n", config)
+	for key, value := range config["values"] {
+		fmt.Printf("CONFIG: %v, %v\n", key, value)
+	}
+	for key, value := range config["valuesFrom"] {
+		fmt.Printf("CONFIG: %v, %v\n", key, value)
+	}
+	
 
 	u := updater.NewBundleDeploymentUpdater(r.Client)
 	defer func() {

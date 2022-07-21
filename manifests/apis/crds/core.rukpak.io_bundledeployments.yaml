@@ -48,6 +48,10 @@ spec:
           spec:
             description: BundleDeploymentSpec defines the desired state of BundleDeployment
             properties:
+              config:
+                description: Config is provisioner specific configurations
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
               provisionerClassName:
                 description: ProvisionerClassName sets the name of the provisioner
                   that should reconcile this BundleDeployment.

@@ -1,0 +1,20 @@
+apiVersion: core.rukpak.io/v1alpha1
+kind: BundleDeployment
+metadata:
+  name: helm-proto1
+spec:
+  provisionerClassName: core.rukpak.io/plain
+  config:
+    valuesFrom:
+      configMapName: aaa
+  template:
+    metadata: {}
+    spec:
+      provisionerClassName: core.rukpak.io/plain
+      source:
+        local:
+          configMap:
+            name: rukpakctl-bd-s7gpk
+            namespace: rukpak-system
+        type: local
+
