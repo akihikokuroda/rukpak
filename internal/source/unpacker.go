@@ -112,9 +112,8 @@ func NewDefaultUnpacker(mgr ctrl.Manager, namespace, provisionerName, unpackImag
 			Client: mgr.GetClient(),
 			reader: mgr.GetAPIReader(),
 		},
-		rukpakv1alpha1.SourceTypeHTTP: &HTTP{
+		rukpakv1alpha1.SourceTypeHelm: &Helm{
 			Reader:          mgr.GetAPIReader(),
-			SecretNamespace: namespace,
 		},
 	}), nil
 }

@@ -146,7 +146,7 @@ func (r *BundleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		updateStatusUnpacking(&u, unpackResult)
 		return ctrl.Result{}, nil
 	case source.StateUnpacked:
-		if bundle.Spec.Source.Type != rukpakv1alpha1.SourceTypeHTTP { 
+		if bundle.Spec.Source.Type != rukpakv1alpha1.SourceTypeHelm { 
 			objects, err := getObjects(unpackResult.Bundle)
 			if err != nil {
 				return ctrl.Result{}, updateStatusUnpackFailing(&u, fmt.Errorf("get objects from bundle manifests: %v", err))

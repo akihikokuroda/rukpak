@@ -17,7 +17,7 @@
   - required:
     - local
   - required:
-    - http
+    - helm
 
 # Union git ref
 - op: add

@@ -12,7 +12,8 @@ spec:
     spec:
       provisionerClassName: core.rukpak.io/plain
       source:
-        http:
+        helm:
           repository: https://charts.bitnami.com/bitnami  
-          directory: bitnami/apache
-        type: http
+          name: apache
+          #version: 9.1.13
+        type: helm
