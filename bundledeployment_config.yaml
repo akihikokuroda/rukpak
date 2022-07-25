@@ -15,5 +15,5 @@ spec:
         helm:
           repository: https://charts.bitnami.com/bitnami  
           name: apache
-          #version: 9.1.13
+          version: 9.1.13
         type: helm

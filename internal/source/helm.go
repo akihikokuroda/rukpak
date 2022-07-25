@@ -49,19 +49,15 @@ func (r *Helm) Unpack(ctx context.Context, bundle *rukpakv1alpha1.Bundle) (*Resu
 		RegistryClient:   registryClient,
 		
 	}
-//	chartURL, err := repo.FindChartInRepoURL(helmsource.Repository, "apache", "9.1.13", "","","",  getter.All(&cli.EnvSettings{}) )
 	chartURL, err := repo.FindChartInRepoURL(helmsource.Repository, helmsource.ChartName, helmsource.ChartVersion, "","","",  getter.All(&cli.EnvSettings{}) )
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("\n\nDOWNLOADED 1: %v\n\n", chartURL)
-	saved, _, err := c.DownloadTo(chartURL, "9.1.13", "/")
+	saved, _, err := c.DownloadTo(chartURL, helmsource.ChartVersion, "/")
 	if err != nil {
-	fmt.Printf("DOWNLOADED 1.1: %+v\n\n", err)
 		return nil, err
 	}
 	
-	fmt.Printf("\n\nDOWNLOADED 2: %v\n\n", saved)
 	var memFS = memfs.New()
 	file, err := memFS.Create(filepath.Join("manifests", "chart"))
 	if err != nil {
@@ -71,7 +67,6 @@ func (r *Helm) Unpack(ctx context.Context, bundle *rukpakv1alpha1.Bundle) (*Resu
 	if err != nil {
 		return nil, fmt.Errorf("reading downloaded chart file: %s", err)
 	}
-//	fmt.Printf("\n\nDOWNLOADED 3: %s\n\n", string(chart))
 	_, err = file.Write(chart)
 	if err != nil {
 		return nil, fmt.Errorf("writing chart file: %s", err)

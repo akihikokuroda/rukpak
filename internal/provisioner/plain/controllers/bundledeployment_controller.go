@@ -37,7 +37,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-//	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -48,10 +47,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-//	"sigs.k8s.io/yaml"
 
 	rukpakv1alpha1 "github.com/operator-framework/rukpak/api/v1alpha1"
-//	helmpredicate "github.com/operator-framework/rukpak/internal/helm-operator-plugins/predicate"
 	plain "github.com/operator-framework/rukpak/internal/provisioner/plain/types"
 	"github.com/operator-framework/rukpak/internal/storage"
 	updater "github.com/operator-framework/rukpak/internal/updater/bundle-deployment"
@@ -112,39 +109,6 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			l.Error(err, "failed to patch status")
 		}
 	}()
-	data, err := bd.Spec.Config.MarshalJSON()
-	if err != nil {
-		fmt.Printf("ERROR: %v\n", err)
-	}
-	fmt.Printf("BD %+v\n", string(data))
-	type keyvalue map[string]map[string]string
-	var config keyvalue
-	err = json.Unmarshal(data, &config)
-	if err != nil {
-		fmt.Printf("ERROR: %v\n", err)
-	}
-	fmt.Printf("CONFIG: %+v\n", config)
-	for key, value := range config["values"] {
-		fmt.Printf("CONFIG: %v, %v\n", key, value)
-	}
-	var configMapName string
-	for key, value := range config["valuesFrom"] {
-		fmt.Printf("CONFIG: %v, %v\n", key, value)
-		if key == "configMapName" {
-			configMapName = string(value)
-		}
-	}
-	fmt.Printf("configMapName: %s\n", configMapName)
-	configMap := &corev1.ConfigMap{}
-	if err := r.Reader.Get(ctx, client.ObjectKey{Name: configMapName, Namespace: r.ReleaseNamespace}, configMap); err != nil {
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
-	values, err := chartutil.ReadValues([]byte(configMap.Data["values.yaml"]))
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	fmt.Printf("Values: %+v\n", values)
-	
 
 	u := updater.NewBundleDeploymentUpdater(r.Client)
 	defer func() {
@@ -152,6 +116,67 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			l.Error(err, "failed to update status")
 		}
 	}()
+
+	data, err := bd.Spec.Config.MarshalJSON()
+	if err != nil {
+		u.UpdateStatus(
+			updater.EnsureCondition(metav1.Condition{
+				Type:    rukpakv1alpha1.TypeHasValidBundle,
+				Status:  metav1.ConditionUnknown,
+				Reason:  rukpakv1alpha1.ReasonReconcileFailed,
+				Message: err.Error(),
+			}),
+		)
+		return ctrl.Result{}, err
+	}
+	type keyvalue map[string]map[string]string
+	var config keyvalue
+	err = json.Unmarshal(data, &config)
+	if err != nil {
+		u.UpdateStatus(
+			updater.EnsureCondition(metav1.Condition{
+				Type:    rukpakv1alpha1.TypeHasValidBundle,
+				Status:  metav1.ConditionUnknown,
+				Reason:  rukpakv1alpha1.ReasonReconcileFailed,
+				Message: err.Error(),
+			}),
+		)
+		return ctrl.Result{}, err
+	}
+	var configMapName string
+	for key, value := range config["valuesFrom"] {
+		if key == "configMapName" {
+			configMapName = string(value)
+		}
+	}
+	var values chartutil.Values
+	if configMapName != "" {
+		configMap := &corev1.ConfigMap{}
+		if err := r.Reader.Get(ctx, client.ObjectKey{Name: configMapName, Namespace: r.ReleaseNamespace}, configMap); err != nil {
+			u.UpdateStatus(
+				updater.EnsureCondition(metav1.Condition{
+					Type:    rukpakv1alpha1.TypeHasValidBundle,
+					Status:  metav1.ConditionUnknown,
+					Reason:  rukpakv1alpha1.ReasonReconcileFailed,
+					Message: err.Error(),
+				}),
+			)
+			return ctrl.Result{}, err
+		}
+		values, err = chartutil.ReadValues([]byte(configMap.Data["values.yaml"]))
+		if err != nil {
+			u.UpdateStatus(
+				updater.EnsureCondition(metav1.Condition{
+					Type:    rukpakv1alpha1.TypeHasValidBundle,
+					Status:  metav1.ConditionUnknown,
+					Reason:  rukpakv1alpha1.ReasonReconcileFailed,
+					Message: err.Error(),
+				}),
+			)
+			return ctrl.Result{}, err
+		}
+	}
+
 
 	bundle, _, err := reconcileDesiredBundle(ctx, r.Client, bd)
 	if err != nil {
@@ -194,61 +219,73 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			Reason:  rukpakv1alpha1.ReasonUnpackSuccessful,
 			Message: fmt.Sprintf("Successfully unpacked the %s Bundle", bundle.GetName()),
 		}))
-/*
-	desiredObjects, err := r.loadBundle(ctx, bundle, bd.GetName())
+
+	bundleFS, err := r.BundleStorage.Load(ctx, bundle)
 	if err != nil {
 		u.UpdateStatus(
 			updater.EnsureCondition(metav1.Condition{
-				Type:    rukpakv1alpha1.TypeHasValidBundle,
-				Status:  metav1.ConditionFalse,
-				Reason:  rukpakv1alpha1.ReasonBundleLoadFailed,
+				Type:    rukpakv1alpha1.TypeInvalidBundleContent,
+				Status:  metav1.ConditionTrue,
+				Reason:  rukpakv1alpha1.ReasonReadingContentFailed,
 				Message: err.Error(),
 			}))
 		return ctrl.Result{}, err
 	}
-
-	chrt := &chart.Chart{
-		Metadata: &chart.Metadata{},
-	}
-	for _, obj := range desiredObjects {
-		jsonData, err := yaml.Marshal(obj)
-		if err != nil {
-			u.UpdateStatus(
-				updater.EnsureCondition(metav1.Condition{
-					Type:    rukpakv1alpha1.TypeInvalidBundleContent,
-					Status:  metav1.ConditionTrue,
-					Reason:  rukpakv1alpha1.ReasonReadingContentFailed,
-					Message: err.Error(),
-				}))
-			return ctrl.Result{}, err
-		}
-		hash := sha256.Sum256(jsonData)
-		chrt.Templates = append(chrt.Templates, &chart.File{
-			Name: fmt.Sprintf("object-%x.yaml", hash[0:8]),
-			Data: jsonData,
-		})
-	}
-*/
-	bundleFS, err := r.BundleStorage.Load(ctx, bundle)
-	if err != nil {
-		fmt.Printf("ERROR 1 writing temp file: %+v\n", err)
-	}
 	chartfile, err := bundleFS.Open("manifests/chart")
-	chartfileinfo, err := chartfile.Stat()
-	buf := make([]byte, chartfileinfo.Size())
-	fmt.Printf("Bud size: %v\n", len(buf))
-	i, err := chartfile.Read(buf)
 	if err != nil {
-		fmt.Printf("ERROR 2 writing temp file: %+v\n", err)
+		u.UpdateStatus(
+			updater.EnsureCondition(metav1.Condition{
+				Type:    rukpakv1alpha1.TypeInvalidBundleContent,
+				Status:  metav1.ConditionTrue,
+				Reason:  rukpakv1alpha1.ReasonReadingContentFailed,
+				Message: err.Error(),
+			}))
+		return ctrl.Result{}, err
 	}
-	fmt.Printf("written size: %v\n", i)
+	chartfileinfo, err := chartfile.Stat()
+	if err != nil {
+		u.UpdateStatus(
+			updater.EnsureCondition(metav1.Condition{
+				Type:    rukpakv1alpha1.TypeInvalidBundleContent,
+				Status:  metav1.ConditionTrue,
+				Reason:  rukpakv1alpha1.ReasonReadingContentFailed,
+				Message: err.Error(),
+			}))
+		return ctrl.Result{}, err
+	}
+	buf := make([]byte, chartfileinfo.Size())
+	_, err = chartfile.Read(buf)
+	if err != nil {
+		u.UpdateStatus(
+			updater.EnsureCondition(metav1.Condition{
+				Type:    rukpakv1alpha1.TypeInvalidBundleContent,
+				Status:  metav1.ConditionTrue,
+				Reason:  rukpakv1alpha1.ReasonReadingContentFailed,
+				Message: err.Error(),
+			}))
+		return ctrl.Result{}, err
+	}
 	err = ioutil.WriteFile("/chart", buf, 0644)
 	if err != nil {
-		fmt.Printf("ERROR 3 writing temp file: %+v\n", err)
+		u.UpdateStatus(
+			updater.EnsureCondition(metav1.Condition{
+				Type:    rukpakv1alpha1.TypeInvalidBundleContent,
+				Status:  metav1.ConditionTrue,
+				Reason:  rukpakv1alpha1.ReasonReadingContentFailed,
+				Message: err.Error(),
+			}))
+		return ctrl.Result{}, err
 	}
 	chrt, err := loader.LoadFile("/chart")
 	if err != nil {
-		fmt.Printf("ERROR loading chart %+v\n", err)
+		u.UpdateStatus(
+			updater.EnsureCondition(metav1.Condition{
+				Type:    rukpakv1alpha1.TypeInvalidBundleContent,
+				Status:  metav1.ConditionTrue,
+				Reason:  rukpakv1alpha1.ReasonReadingContentFailed,
+				Message: err.Error(),
+			}))
+		return ctrl.Result{}, err
 	}
 	
 
@@ -329,47 +366,6 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	default:
 		return ctrl.Result{}, fmt.Errorf("unexpected release state %q", state)
 	}
-/*
-	for _, obj := range desiredObjects {
-		uMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
-		if err != nil {
-			u.UpdateStatus(
-				updater.EnsureCondition(metav1.Condition{
-					Type:    rukpakv1alpha1.TypeInstalled,
-					Status:  metav1.ConditionFalse,
-					Reason:  rukpakv1alpha1.ReasonCreateDynamicWatchFailed,
-					Message: err.Error(),
-				}))
-			return ctrl.Result{}, err
-		}
-
-		unstructuredObj := &unstructured.Unstructured{Object: uMap}
-		if err := func() error {
-			r.dynamicWatchMutex.Lock()
-			defer r.dynamicWatchMutex.Unlock()
-
-			_, isWatched := r.dynamicWatchGVKs[unstructuredObj.GroupVersionKind()]
-			if !isWatched {
-				if err := r.Controller.Watch(
-					&source.Kind{Type: unstructuredObj},
-					&handler.EnqueueRequestForOwner{OwnerType: bd, IsController: true},
-					helmpredicate.DependentPredicateFuncs()); err != nil {
-					return err
-				}
-				r.dynamicWatchGVKs[unstructuredObj.GroupVersionKind()] = struct{}{}
-			}
-			return nil
-		}(); err != nil {
-			u.UpdateStatus(
-				updater.EnsureCondition(metav1.Condition{
-					Type:    rukpakv1alpha1.TypeInstalled,
-					Status:  metav1.ConditionFalse,
-					Reason:  rukpakv1alpha1.ReasonCreateDynamicWatchFailed,
-					Message: err.Error(),
-				}))
-			return ctrl.Result{}, err
-		}
-	}
 	u.UpdateStatus(
 		updater.EnsureCondition(metav1.Condition{
 			Type:    rukpakv1alpha1.TypeInstalled,
@@ -380,11 +376,6 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		updater.EnsureInstalledName(bundle.GetName()),
 	)
 
-	if err := r.reconcileOldBundles(ctx, bundle, allBundles); err != nil {
-		l.Error(err, "failed to delete old bundles")
-		return ctrl.Result{}, err
-	}
-*/
 	return ctrl.Result{}, nil
 }
 
@@ -487,29 +478,6 @@ func (r *BundleDeploymentReconciler) getReleaseState(cl helmclient.ActionInterfa
 		return currentRelease, stateNeedsUpgrade, nil
 	}
 	return currentRelease, stateUnchanged, nil
-}
-
-func (r *BundleDeploymentReconciler) loadBundle(ctx context.Context, bundle *rukpakv1alpha1.Bundle, bdName string) ([]client.Object, error) {
-	bundleFS, err := r.BundleStorage.Load(ctx, bundle)
-	if err != nil {
-		return nil, fmt.Errorf("load bundle: %v", err)
-	}
-
-	objects, err := getObjects(bundleFS)
-	if err != nil {
-		return nil, fmt.Errorf("read bundle objects from bundle: %v", err)
-	}
-
-	objs := make([]client.Object, 0, len(objects))
-	for _, obj := range objects {
-		obj := obj
-		obj.SetLabels(util.MergeMaps(obj.GetLabels(), map[string]string{
-			util.CoreOwnerKindKey: rukpakv1alpha1.BundleDeploymentKind,
-			util.CoreOwnerNameKey: bdName,
-		}))
-		objs = append(objs, obj)
-	}
-	return objs, nil
 }
 
 type errRequiredResourceNotFound struct {
