@@ -146,13 +146,15 @@ func (r *BundleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		updateStatusUnpacking(&u, unpackResult)
 		return ctrl.Result{}, nil
 	case source.StateUnpacked:
-		objects, err := getObjects(unpackResult.Bundle)
-		if err != nil {
-			return ctrl.Result{}, updateStatusUnpackFailing(&u, fmt.Errorf("get objects from bundle manifests: %v", err))
-		}
-		if len(objects) == 0 {
-			return ctrl.Result{}, updateStatusUnpackFailing(&u, errors.New("invalid bundle: found zero objects: "+
-				"plain+v0 bundles are required to contain at least one object"))
+		if bundle.Spec.Source.Type != rukpakv1alpha1.SourceTypeHTTP { 
+			objects, err := getObjects(unpackResult.Bundle)
+			if err != nil {
+				return ctrl.Result{}, updateStatusUnpackFailing(&u, fmt.Errorf("get objects from bundle manifests: %v", err))
+			}
+			if len(objects) == 0 {
+				return ctrl.Result{}, updateStatusUnpackFailing(&u, errors.New("invalid bundle: found zero objects: "+
+					"plain+v0 bundles are required to contain at least one object"))
+			}
 		}
 
 		if err := r.Storage.Store(ctx, bundle, unpackResult.Bundle); err != nil {

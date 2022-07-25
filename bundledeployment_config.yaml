@@ -5,17 +5,14 @@ metadata:
 spec:
   provisionerClassName: core.rukpak.io/plain
   config:
-    values:
-      key1: "value1"
-      key2: "value2"
+    valuesFrom:
+      configMapName: apachevalues
   template:
     metadata: {}
     spec:
       provisionerClassName: core.rukpak.io/plain
       source:
-        local:
-          configMap:
-            name: rukpakctl-bd-s7gpk
-            namespace: rukpak-system
-        type: local
-
+        http:
+          repository: https://charts.bitnami.com/bitnami  
+          directory: bitnami/apache
+        type: http

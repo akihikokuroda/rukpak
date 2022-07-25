@@ -18,22 +18,26 @@ package controllers
 
 import (
 	"context"
-	"crypto/sha256"
+//	"crypto/sha256"
 	"errors"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"strings"
 	"sync"
 
 	helmclient "github.com/operator-framework/helm-operator-plugins/pkg/client"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
+	"helm.sh/helm/v3/pkg/chart/loader"
+	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage/driver"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+//	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -44,10 +48,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	"sigs.k8s.io/yaml"
+//	"sigs.k8s.io/yaml"
 
 	rukpakv1alpha1 "github.com/operator-framework/rukpak/api/v1alpha1"
-	helmpredicate "github.com/operator-framework/rukpak/internal/helm-operator-plugins/predicate"
+//	helmpredicate "github.com/operator-framework/rukpak/internal/helm-operator-plugins/predicate"
 	plain "github.com/operator-framework/rukpak/internal/provisioner/plain/types"
 	"github.com/operator-framework/rukpak/internal/storage"
 	updater "github.com/operator-framework/rukpak/internal/updater/bundle-deployment"
@@ -68,6 +72,8 @@ var (
 // BundleDeploymentReconciler reconciles a BundleDeployment object
 type BundleDeploymentReconciler struct {
 	client.Client
+	Reader client.Reader
+
 	Scheme     *runtime.Scheme
 	Controller controller.Controller
 
@@ -121,9 +127,23 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	for key, value := range config["values"] {
 		fmt.Printf("CONFIG: %v, %v\n", key, value)
 	}
+	var configMapName string
 	for key, value := range config["valuesFrom"] {
 		fmt.Printf("CONFIG: %v, %v\n", key, value)
+		if key == "configMapName" {
+			configMapName = string(value)
+		}
 	}
+	fmt.Printf("configMapName: %s\n", configMapName)
+	configMap := &corev1.ConfigMap{}
+	if err := r.Reader.Get(ctx, client.ObjectKey{Name: configMapName, Namespace: r.ReleaseNamespace}, configMap); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	values, err := chartutil.ReadValues([]byte(configMap.Data["values.yaml"]))
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	fmt.Printf("Values: %+v\n", values)
 	
 
 	u := updater.NewBundleDeploymentUpdater(r.Client)
@@ -133,7 +153,7 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}()
 
-	bundle, allBundles, err := reconcileDesiredBundle(ctx, r.Client, bd)
+	bundle, _, err := reconcileDesiredBundle(ctx, r.Client, bd)
 	if err != nil {
 		u.UpdateStatus(
 			updater.EnsureCondition(metav1.Condition{
@@ -174,7 +194,7 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			Reason:  rukpakv1alpha1.ReasonUnpackSuccessful,
 			Message: fmt.Sprintf("Successfully unpacked the %s Bundle", bundle.GetName()),
 		}))
-
+/*
 	desiredObjects, err := r.loadBundle(ctx, bundle, bd.GetName())
 	if err != nil {
 		u.UpdateStatus(
@@ -208,6 +228,29 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			Data: jsonData,
 		})
 	}
+*/
+	bundleFS, err := r.BundleStorage.Load(ctx, bundle)
+	if err != nil {
+		fmt.Printf("ERROR 1 writing temp file: %+v\n", err)
+	}
+	chartfile, err := bundleFS.Open("manifests/chart")
+	chartfileinfo, err := chartfile.Stat()
+	buf := make([]byte, chartfileinfo.Size())
+	fmt.Printf("Bud size: %v\n", len(buf))
+	i, err := chartfile.Read(buf)
+	if err != nil {
+		fmt.Printf("ERROR 2 writing temp file: %+v\n", err)
+	}
+	fmt.Printf("written size: %v\n", i)
+	err = ioutil.WriteFile("/chart", buf, 0644)
+	if err != nil {
+		fmt.Printf("ERROR 3 writing temp file: %+v\n", err)
+	}
+	chrt, err := loader.LoadFile("/chart")
+	if err != nil {
+		fmt.Printf("ERROR loading chart %+v\n", err)
+	}
+	
 
 	bd.SetNamespace(r.ReleaseNamespace)
 	cl, err := r.ActionClientGetter.ActionClientFor(bd)
@@ -237,7 +280,7 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	switch state {
 	case stateNeedsInstall:
-		_, err = cl.Install(bd.Name, r.ReleaseNamespace, chrt, nil, func(install *action.Install) error {
+		_, err = cl.Install(bd.Name, r.ReleaseNamespace, chrt, values.AsMap(), func(install *action.Install) error {
 			install.CreateNamespace = false
 			return nil
 		})
@@ -286,7 +329,7 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	default:
 		return ctrl.Result{}, fmt.Errorf("unexpected release state %q", state)
 	}
-
+/*
 	for _, obj := range desiredObjects {
 		uMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
 		if err != nil {
@@ -341,7 +384,7 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		l.Error(err, "failed to delete old bundles")
 		return ctrl.Result{}, err
 	}
-
+*/
 	return ctrl.Result{}, nil
 }
 

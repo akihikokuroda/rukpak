@@ -200,6 +200,7 @@ func main() {
 	cfgGetter := helmclient.NewActionConfigGetter(mgr.GetConfig(), mgr.GetRESTMapper(), mgr.GetLogger())
 	if err = (&controllers.BundleDeploymentReconciler{
 		Client:             mgr.GetClient(),
+		Reader:             mgr.GetAPIReader(),
 		Scheme:             mgr.GetScheme(),
 		BundleStorage:      bundleStorage,
 		ReleaseNamespace:   ns,
