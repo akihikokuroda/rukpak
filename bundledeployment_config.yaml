@@ -4,16 +4,14 @@ metadata:
   name: helm-proto1
 spec:
   provisionerClassName: core.rukpak.io/plain
-  config:
-    valuesFrom:
-      configMapName: apachevalues
+  #config:
+  #  valuesFrom:
+  #    configMapName: apachevalues
   template:
     metadata: {}
     spec:
       provisionerClassName: core.rukpak.io/plain
       source:
-        helm:
-          repository: https://charts.bitnami.com/bitnami  
-          name: apache
-          version: 9.1.13
-        type: helm
+        http:
+          url: https://charts.bitnami.com/bitnami/apache-9.1.13.tgz  
+        type: http

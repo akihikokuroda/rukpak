@@ -16,12 +16,14 @@ import (
 	"helm.sh/helm/v3/pkg/downloader"
 	"helm.sh/helm/v3/pkg/registry"
 	"helm.sh/helm/v3/pkg/cli"
+	corev1 "k8s.io/api/core/v1"
 
 	rukpakv1alpha1 "github.com/operator-framework/rukpak/api/v1alpha1"
 )
 
 type Helm struct {
 	client.Reader
+	SecretNamespace string
 }
 
 func (r *Helm) Unpack(ctx context.Context, bundle *rukpakv1alpha1.Bundle) (*Result, error) {
@@ -38,21 +40,43 @@ func (r *Helm) Unpack(ctx context.Context, bundle *rukpakv1alpha1.Bundle) (*Resu
 	}
 	var out strings.Builder
 	registryClient, err := registry.NewClient(
-		registry.ClientOptDebug(false),
+		registry.ClientOptDebug(true),
 	)
 	if err != nil {
 		return nil, err
 	}
+	
+	var options []getter.Option
+	options = append(options, getter.WithInsecureSkipVerifyTLS(bundle.Spec.Source.Helm.Auth.InsecureSkipVerify))
+	var userName, password string
+	if bundle.Spec.Source.Helm.Auth.Secret.Name != "" {
+		userName, password, err = r.getCredentials(ctx, bundle)
+		if err != nil {
+			return nil, err
+		}
+		options = append(options, getter.WithBasicAuth(userName, password))
+	}
+	registryClient.Login(helmsource.Repository,
+		registry.LoginOptBasicAuth(userName, password),
+		registry.LoginOptInsecure(bundle.Spec.Source.Helm.Auth.InsecureSkipVerify),
+		)
 	c := downloader.ChartDownloader{
 		Out:     &out,
 		Getters: getter.All(&cli.EnvSettings{}),
 		RegistryClient:   registryClient,
+		Options:  options,
 		
 	}
-	chartURL, err := repo.FindChartInRepoURL(helmsource.Repository, helmsource.ChartName, helmsource.ChartVersion, "","","",  getter.All(&cli.EnvSettings{}) )
-	if err != nil {
-		return nil, err
+	fmt.Printf("CHART: %s %s %s\n", helmsource.Repository, helmsource.ChartName, helmsource.ChartVersion)
+	if _, err = getter.All(&cli.EnvSettings{}).ByScheme("oci"); err != nil {
+		fmt.Printf("ERROR No GETTER\n")
 	}
+	chartURL, err := repo.FindChartInAuthAndTLSRepoURL(helmsource.Repository, userName, password, helmsource.ChartName, helmsource.ChartVersion, "","","", bundle.Spec.Source.Helm.Auth.InsecureSkipVerify, getter.All(&cli.EnvSettings{}))
+	if err != nil {
+//		return nil, err
+		chartURL = "oci://docker-registry.rukpak-e2e.svc.cluster.local:5000/helm-charts/mychart-0.1.0.tgz"
+	}
+	fmt.Printf("chartURL: %s\n", chartURL)
 	saved, _, err := c.DownloadTo(chartURL, helmsource.ChartVersion, "/")
 	if err != nil {
 		return nil, err
@@ -84,4 +108,17 @@ func (r *Helm) Unpack(ctx context.Context, bundle *rukpakv1alpha1.Bundle) (*Resu
 	return &Result{Bundle: bundleFS, ResolvedSource: resolvedSource, State: StateUnpacked}, nil
 }
 
+// getCredentials reads credentials from the secret specified in the bundle
+// It returns the username ane password when they are in the secret
+func (r *Helm) getCredentials(ctx context.Context, bundle *rukpakv1alpha1.Bundle) (string, string, error) {
+	secret := &corev1.Secret{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: r.SecretNamespace, Name: bundle.Spec.Source.Helm.Auth.Secret.Name}, secret)
+	if err != nil {
+		return "", "", err
+	}
+	userName := string(secret.Data["username"])
+	password := string(secret.Data["password"])
+
+	return userName, password, nil
+}
 

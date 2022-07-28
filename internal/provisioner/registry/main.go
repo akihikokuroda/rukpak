@@ -179,7 +179,7 @@ func main() {
 	}
 
 	const registryBundleProvisionerName = "registry"
-	unpacker, err := source.NewDefaultUnpacker(mgr, ns, registryBundleProvisionerName, unpackImage)
+	unpacker, err := source.NewDefaultUnpacker(mgr, ns, registryBundleProvisionerName, unpackImage, nil)
 	if err != nil {
 		setupLog.Error(err, "unable to setup bundle unpacker")
 		os.Exit(1)

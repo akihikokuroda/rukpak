@@ -32,6 +32,7 @@ const (
 	SourceTypeImage SourceType = "image"
 	SourceTypeGit   SourceType = "git"
 	SourceTypeLocal SourceType = "local"
+	SourceTypeHTTP  SourceType = "http"
 	SourceTypeHelm  SourceType = "helm"
 
 	TypeUnpacked = "Unpacked"
@@ -65,6 +66,8 @@ type BundleSource struct {
 	Git *GitSource `json:"git,omitempty"`
 	// Local is a reference to a local object in the cluster.
 	Local *LocalSource `json:"local,omitempty"`
+	//  HTTP is the remote location that backs the content of this Bundle.
+	HTTP *HTTPSource `json:"http,omitempty"`
 	// Helm is a remote repository that backs the content of this Bundle.
 	Helm *HelmSource `json:"helm,omitempty"`
 }
@@ -92,6 +95,13 @@ type GitSource struct {
 	Auth Authorization `json:"auth,omitempty"`
 }
 
+type HTTPSource struct {
+	// URL is where the bundle contents is.
+	URL string `json:"url"`
+	// Auth configures the authorization method if necessary.
+	Auth Authorization `json:"auth,omitempty"`
+}
+
 type HelmSource struct {
 	// Repository is a URL link to the Helm repository containing the chart for the bundle.
 	// Repository is required and the URL should be parsable by a standard git tool.
@@ -101,6 +111,8 @@ type HelmSource struct {
 	// ChartVersion refers to the chart version for the bundle within the helm repository.
 	// ChartVersion is optional
 	ChartVersion string `json:"version,omitempty"`
+	// Auth configures the authorization method if necessary.
+	Auth Authorization `json:"auth,omitempty"`
 }
 
 type LocalSource struct {

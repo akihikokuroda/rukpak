@@ -180,7 +180,7 @@ func main() {
 	}
 
 	const plainBundleProvisionerName = "plain"
-	unpacker, err := source.NewDefaultUnpacker(mgr, ns, plainBundleProvisionerName, unpackImage)
+	unpacker, err := source.NewDefaultUnpacker(mgr, ns, plainBundleProvisionerName, unpackImage, nil)
 	if err != nil {
 		setupLog.Error(err, "unable to setup bundle unpacker")
 		os.Exit(1)
