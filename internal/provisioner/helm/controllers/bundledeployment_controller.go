@@ -241,13 +241,16 @@ func (r *BundleDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	default:
 		return ctrl.Result{}, fmt.Errorf("unexpected release state %q", state)
 	}
-
+	msg, err := r.generateSuccessMessage(ctx, cl, bd, bundle)
+	if err != nil {
+		msg = fmt.Sprintf("instantiated bundle %s successfully", bundle.GetName())
+	}
 	u.UpdateStatus(
 		updater.EnsureCondition(metav1.Condition{
 			Type:    rukpakv1alpha1.TypeInstalled,
 			Status:  metav1.ConditionTrue,
 			Reason:  rukpakv1alpha1.ReasonInstallationSucceeded,
-			Message: fmt.Sprintf("instantiated bundle %s successfully", bundle.GetName()),
+			Message: msg,
 		}),
 		updater.EnsureInstalledName(bundle.GetName()),
 	)
@@ -338,6 +341,14 @@ func (r *BundleDeploymentReconciler) loadChart(ctx context.Context, bundle *rukp
 		return nil, err
 	}
 	return getChart(chartfs)
+}
+
+func (r *BundleDeploymentReconciler) generateSuccessMessage(ctx context.Context, cl helmclient.ActionInterface, bd *rukpakv1alpha1.BundleDeployment, bundle *rukpakv1alpha1.Bundle) (string, error) {
+	release, err := cl.Get(bd.GetName())
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("instantiated bundle %s successfully\nLog: %s\nNote: %s\n", bundle.GetName(), release.Info.Description, release.Info.Notes), nil
 }
 
 type errRequiredResourceNotFound struct {
